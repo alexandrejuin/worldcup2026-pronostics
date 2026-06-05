@@ -304,9 +304,16 @@
   body.admin-mode header { background: linear-gradient(135deg, #5a2410, #2a1208); border-bottom-color: #ffb070; }
 
   /* Verrouillage / horaires */
-  .match-meta { font-size: 0.68rem; color: #6a7b90; text-align: center; margin: -2px 0 10px; }
+  .match-meta { font-size: 0.68rem; color: #6a7b90; text-align: center; margin: -2px 0 4px; }
   .match-meta .lock { color: #e08a3c; font-weight: 600; }
   .match-meta .kick { color: #6a7b90; }
+  .match-real { font-size: 0.74rem; text-align: center; margin: 0 0 10px; display: flex; gap: 8px; justify-content: center; align-items: center; }
+  .match-real .real-score { color: #e0e6f0; font-weight: 600; }
+  .match-real .cmp { font-weight: 700; padding: 1px 7px; border-radius: 10px; font-size: 0.7rem; }
+  .match-real .cmp.ok { background: #15401f; color: #5fd17a; }
+  .match-real .cmp.half { background: #3a3320; color: #d4b94a; }
+  .match-real .cmp.miss { background: #3a1a1a; color: #ff8080; }
+  .match-real .cmp.none { background: #1a2a40; color: #6a7b90; }
   .score-input:disabled { opacity: 0.45; cursor: not-allowed; background: #11203a; }
   .bracket-round.locked h4::after { content: ' 🔒'; }
   .bracket-round.locked .bracket-team { cursor: default !important; }
@@ -413,6 +420,7 @@ try {
 
 let currentPlayer = null; // { name, code }
 let adminMode = false;
+let officialResults = null; // résultats officiels (robot) pour l'affichage réel vs prono
 let adminCode = null;
 let playerSnapshotBeforeAdmin = null;
 const RESERVED_OFFICIAL_ID = 'official_results';
@@ -924,6 +932,25 @@ function renderGroups() {
           : `<span class="kick">🕒 ${fmtParis(iso)}</span>`;
       }
       ml.appendChild(meta);
+
+      // Résultat réel (récupéré par le robot) + comparaison avec le prono
+      const off = officialResults && officialResults.groups && officialResults.groups[g] && officialResults.groups[g].matches && officialResults.groups[g].matches[mi];
+      if (off && off.result && off.score && off.score[0] != null && off.score[1] != null) {
+        const real = document.createElement('div');
+        real.className = 'match-real';
+        let cmp = '';
+        if (m.result) {
+          const exact = m.score && m.score[0] != null && m.score[1] != null &&
+            Number(m.score[0]) === Number(off.score[0]) && Number(m.score[1]) === Number(off.score[1]);
+          if (exact) cmp = `<span class="cmp ok">🎯 +${SCORING.exactScore}</span>`;
+          else if (m.result === off.result) cmp = `<span class="cmp half">✓ +${SCORING.correctResult}</span>`;
+          else cmp = `<span class="cmp miss">✗ 0</span>`;
+        } else {
+          cmp = `<span class="cmp none">pas de prono</span>`;
+        }
+        real.innerHTML = `<span class="real-score">Résultat : ${off.score[0]}–${off.score[1]}</span> ${cmp}`;
+        ml.appendChild(real);
+      }
     });
 
     card.appendChild(ml);
@@ -1088,6 +1115,17 @@ function showPage(id) {
   if (btn) btn.classList.add('active');
   if (id === 'bracket') { seedBracket(); propagateBracket(); renderBracket(); }
   if (id === 'leaderboard') { renderLeaderboard(); }
+  if (id === 'groups') { loadOfficial(); }
+}
+
+// Charge les résultats officiels (robot) pour l'affichage réel vs prono
+async function loadOfficial() {
+  if (!db) return;
+  try {
+    const snap = await db.collection('players').doc(RESERVED_OFFICIAL_ID).get();
+    officialResults = snap.exists ? snap.data() : null;
+    renderGroups();
+  } catch (e) { console.warn('Chargement résultats officiels impossible :', e); }
 }
 
 // ============================================================
@@ -1502,6 +1540,7 @@ renderGroups();
 seedBracket();
 propagateBracket();
 initPlayer();
+loadOfficial();
 lastLockSig = lockSignature();
 </script>
 </body>
