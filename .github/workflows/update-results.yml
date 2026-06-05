@@ -1,0 +1,25 @@
+name: Mise à jour des résultats
+
+on:
+  workflow_dispatch:        # déclenchement manuel (bouton dans l'onglet Actions)
+  schedule:
+    - cron: '*/30 * * * *'  # toutes les 30 min (UTC). Pertinent surtout pendant le tournoi.
+
+# Évite les exécutions qui se chevauchent
+concurrency:
+  group: update-results
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Récupérer et publier les résultats
+        run: node scripts/fetch-results.mjs
+        env:
+          FOOTBALL_DATA_TOKEN: ${{ secrets.FOOTBALL_DATA_TOKEN }}
+          ADMIN_CODE: ${{ secrets.ADMIN_CODE }}
