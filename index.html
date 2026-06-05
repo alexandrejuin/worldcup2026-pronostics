@@ -231,6 +231,57 @@
   }
   .progress-bar { background: #c9a227; height: 6px; border-radius: 4px; transition: width 0.3s; }
   .progress-label { font-size: 0.78rem; color: #8a9bb0; margin-bottom: 6px; }
+
+  /* Player badge */
+  #player-badge {
+    margin-left: auto; display: flex; align-items: center; gap: 8px;
+    background: #0a1628; border: 1px solid #c9a227; border-radius: 20px;
+    padding: 6px 8px 6px 16px;
+  }
+  #player-badge #player-name { color: #c9a227; font-weight: 700; font-size: 0.9rem; }
+  #player-badge button {
+    background: #1e3a5f; color: #e0e6f0; border: none; border-radius: 50%;
+    width: 26px; height: 26px; cursor: pointer; font-size: 0.9rem;
+  }
+  #player-badge button:hover { background: #c9a227; color: #0a1628; }
+
+  /* Login overlay */
+  #login-overlay {
+    position: fixed; inset: 0; z-index: 1000;
+    background: rgba(5,10,20,0.92);
+    display: none; align-items: center; justify-content: center; padding: 20px;
+  }
+  #login-overlay.show { display: flex; }
+  .login-box {
+    background: #0d1f38; border: 1px solid #c9a227; border-radius: 16px;
+    padding: 32px; width: 100%; max-width: 380px;
+  }
+  .login-box h2 { color: #c9a227; font-size: 1.4rem; margin-bottom: 8px; }
+  .login-sub { color: #8a9bb0; font-size: 0.88rem; margin-bottom: 20px; }
+  .login-box label { display: block; font-size: 0.78rem; color: #8a9bb0; margin: 14px 0 6px; }
+  .login-box input {
+    width: 100%; padding: 11px 14px; border-radius: 8px;
+    border: 1px solid #2a4a70; background: #0a1628; color: #e0e6f0; font-size: 1rem;
+  }
+  .login-box input:focus { outline: none; border-color: #c9a227; }
+  .login-hint { font-size: 0.72rem; color: #6a7b90; margin-top: 6px; }
+  #login-error { color: #ff6b6b; font-size: 0.82rem; margin-top: 12px; min-height: 1px; }
+  #login-btn {
+    width: 100%; margin-top: 20px; padding: 12px; border: none; border-radius: 8px;
+    background: #c9a227; color: #0a1628; font-weight: 700; font-size: 0.95rem; cursor: pointer;
+  }
+  #login-btn:hover { background: #e0b840; }
+  #login-btn:disabled { opacity: 0.5; cursor: default; }
+
+  /* Leaderboard */
+  .lb-table { width: 100%; border-collapse: collapse; background: #0d1f38; border-radius: 12px; overflow: hidden; }
+  .lb-table th, .lb-table td { padding: 12px 14px; text-align: left; border-bottom: 1px solid #1e3a5f; font-size: 0.9rem; }
+  .lb-table th { background: #1a3058; color: #c9a227; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.5px; }
+  .lb-table tr:last-child td { border-bottom: none; }
+  .lb-table tr.me { background: #14233f; }
+  .lb-rank { font-weight: 700; color: #8a9bb0; width: 40px; }
+  .lb-prog { color: #4caf50; font-weight: 600; }
+  .lb-empty { text-align: center; color: #8a9bb0; padding: 40px; }
 </style>
 </head>
 <body>
@@ -240,11 +291,16 @@
     <h1>⚽ Coupe du Monde 2026</h1>
     <span>USA · Canada · Mexique — Pronostics</span>
   </div>
+  <div id="player-badge" style="display:none;">
+    <span id="player-name"></span>
+    <button onclick="logoutPlayer()" title="Changer de joueur">⇄</button>
+  </div>
 </header>
 
 <nav>
   <button class="active" onclick="showPage('groups')">Phase de Groupes</button>
   <button onclick="showPage('bracket')">Tableau Final</button>
+  <button onclick="showPage('leaderboard')">🏅 Classement</button>
 </nav>
 
 <div id="groups" class="page active">
@@ -272,7 +328,64 @@
   <div class="podium" id="podium" style="margin-top:24px;"></div>
 </div>
 
+<div id="leaderboard" class="page">
+  <div class="info-bar" style="margin-bottom:12px;">
+    <span id="lb-status">Classement des pronostiqueurs</span>
+    <button class="reset-btn" style="margin:0; padding: 6px 14px; background:#1a3058;" onclick="renderLeaderboard()">↻ Rafraîchir</button>
+  </div>
+  <div class="rules-note" id="lb-note">
+    Le <strong>calcul des points</strong> sera activé une fois les vrais résultats saisis (étape 2). Pour l'instant, ce tableau montre qui a rempli ses pronostics et son champion désigné.
+  </div>
+  <div id="lb-container"></div>
+</div>
+
+<!-- Écran d'identification -->
+<div id="login-overlay">
+  <div class="login-box">
+    <h2>⚽ Pronostics CDM 2026</h2>
+    <p class="login-sub">Entre ton pseudo pour enregistrer et partager tes pronostics.</p>
+    <label>Pseudo</label>
+    <input type="text" id="login-name" maxlength="20" placeholder="Ex. Alex" autocomplete="off">
+    <label>Code secret personnel (4 chiffres)</label>
+    <input type="text" id="login-code" maxlength="4" inputmode="numeric" placeholder="••••" autocomplete="off">
+    <p class="login-hint">Ce code protège tes pronos : retiens-le pour te reconnecter sur un autre appareil.</p>
+    <div id="login-error"></div>
+    <button id="login-btn" onclick="submitLogin()">Commencer</button>
+  </div>
+</div>
+
+<!-- Firebase SDK (compat) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
 <script>
+// ============================================================
+// FIREBASE
+// ============================================================
+const firebaseConfig = {
+  apiKey: "AIzaSyCOQoM5tfu4sXE40ZxLlTLk6lxdCVOqksA",
+  authDomain: "world-cup-2026-dcaf3.firebaseapp.com",
+  projectId: "world-cup-2026-dcaf3",
+  storageBucket: "world-cup-2026-dcaf3.firebasestorage.app",
+  messagingSenderId: "448952088107",
+  appId: "1:448952088107:web:09066f060d98b080ee1c6e"
+};
+let db = null;
+try {
+  firebase.initializeApp(firebaseConfig);
+  db = firebase.firestore();
+} catch (e) { console.warn('Firebase indisponible :', e); }
+
+let currentPlayer = null; // { name, code }
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function playerDocId(name) {
+  return (name || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'joueur';
+}
+
 // ============================================================
 // DATA
 // ============================================================
@@ -368,6 +481,7 @@ function saveState() {
     toSave.groups[g] = { matches: state.groups[g].matches.map(m => ({ result: m.result, score: m.score })) };
   });
   localStorage.setItem('wc2026', JSON.stringify(toSave));
+  scheduleCloudSave();
 }
 
 // ============================================================
@@ -797,6 +911,215 @@ function showPage(id) {
   document.getElementById(id).classList.add('active');
   event.target.classList.add('active');
   if (id === 'bracket') { seedBracket(); propagateBracket(); renderBracket(); }
+  if (id === 'leaderboard') { renderLeaderboard(); }
+}
+
+// ============================================================
+// CLOUD : SAUVEGARDE / RESTAURATION DES PRONOS
+// ============================================================
+function buildPronosPayload() {
+  const groups = {};
+  Object.keys(state.groups).forEach(g => {
+    groups[g] = { matches: state.groups[g].matches.map(m => {
+      let score = null;
+      if (m.score && m.score.length === 2) {
+        const h = (m.score[0] === '' || m.score[0] == null) ? null : Number(m.score[0]);
+        const a = (m.score[1] === '' || m.score[1] == null) ? null : Number(m.score[1]);
+        score = [isNaN(h) ? null : h, isNaN(a) ? null : a];
+      }
+      return { result: m.result ?? null, score };
+    }) };
+  });
+  const bracket = {};
+  ['r16', 'qf', 'sf', 'f', 'tp'].forEach(r => {
+    bracket[r] = state.bracket[r].map(m => ({ winner: m.winner ?? null }));
+  });
+  return { groups, bracket };
+}
+
+let cloudSaveTimer = null;
+function scheduleCloudSave() {
+  if (!currentPlayer || !db) return;
+  clearTimeout(cloudSaveTimer);
+  cloudSaveTimer = setTimeout(saveToCloud, 1200);
+}
+async function saveToCloud() {
+  if (!currentPlayer || !db) return;
+  try {
+    await db.collection('players').doc(playerDocId(currentPlayer.name)).set({
+      name: currentPlayer.name,
+      code: currentPlayer.code,
+      ...buildPronosPayload(),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+  } catch (e) { console.warn('Échec sauvegarde cloud :', e); }
+}
+
+function clearAllPronos() {
+  Object.keys(state.groups).forEach(g => state.groups[g].matches.forEach(m => { m.result = null; m.score = undefined; }));
+  state.bracket.r16.forEach(m => m.winner = null);
+  ['qf', 'sf', 'f', 'tp'].forEach(r => state.bracket[r].forEach(m => { m.winner = null; m.home = null; m.away = null; }));
+}
+
+function applyPronosToState(data) {
+  clearAllPronos();
+  if (data.groups) {
+    Object.keys(data.groups).forEach(g => {
+      if (state.groups[g] && data.groups[g].matches) {
+        data.groups[g].matches.forEach((m, i) => {
+          const tm = state.groups[g].matches[i];
+          if (!tm) return;
+          tm.result = m.result ?? null;
+          if (m.score && m.score.length === 2) {
+            tm.score = [m.score[0] == null ? '' : m.score[0], m.score[1] == null ? '' : m.score[1]];
+          } else tm.score = undefined;
+        });
+      }
+    });
+  }
+  restoreBracketWinners(data.bracket);
+}
+
+// Restaure les vainqueurs choisis, étage par étage (le bracket est régénéré par seed/propagate)
+function restoreBracketWinners(saved) {
+  seedBracket();
+  if (!saved) { propagateBracket(); return; }
+  const apply = (round, sr) => {
+    if (!sr) return;
+    state.bracket[round].forEach((m, i) => {
+      const w = sr[i] && sr[i].winner;
+      m.winner = (w && (w === m.home || w === m.away)) ? w : null;
+    });
+  };
+  apply('r16', saved.r16);
+  propagateBracket(); apply('qf', saved.qf);
+  propagateBracket(); apply('sf', saved.sf);
+  propagateBracket(); apply('f', saved.f); apply('tp', saved.tp);
+}
+
+// ============================================================
+// IDENTIFICATION DU JOUEUR
+// ============================================================
+function showLogin() { document.getElementById('login-overlay').classList.add('show'); }
+function hideLogin() { document.getElementById('login-overlay').classList.remove('show'); }
+function showPlayerBadge() {
+  if (!currentPlayer) return;
+  document.getElementById('player-badge').style.display = 'flex';
+  document.getElementById('player-name').textContent = '👤 ' + currentPlayer.name;
+}
+
+async function submitLogin() {
+  const name = document.getElementById('login-name').value.trim();
+  const code = document.getElementById('login-code').value.trim();
+  const errEl = document.getElementById('login-error');
+  const btn = document.getElementById('login-btn');
+  errEl.textContent = '';
+  if (name.length < 2) { errEl.textContent = 'Entre un pseudo (2 caractères minimum).'; return; }
+  if (!/^\d{4}$/.test(code)) { errEl.textContent = 'Le code doit faire exactement 4 chiffres.'; return; }
+
+  btn.disabled = true; btn.textContent = 'Connexion…';
+  let existed = false;
+  try {
+    if (db) {
+      const snap = await db.collection('players').doc(playerDocId(name)).get();
+      if (snap.exists) {
+        const data = snap.data();
+        if (data.code && data.code !== code) {
+          errEl.textContent = 'Ce pseudo est déjà pris avec un autre code. Choisis un autre pseudo ou entre le bon code.';
+          btn.disabled = false; btn.textContent = 'Commencer';
+          return;
+        }
+        applyPronosToState(data);
+        existed = true;
+      }
+    }
+  } catch (e) {
+    console.warn('Lecture cloud impossible, mode local :', e);
+  }
+  if (!existed) clearAllPronos();
+
+  currentPlayer = { name, code };
+  localStorage.setItem('wc2026_player', JSON.stringify(currentPlayer));
+  hideLogin();
+  showPlayerBadge();
+  renderGroups(); seedBracket(); propagateBracket(); renderBracket();
+  saveToCloud();
+  btn.disabled = false; btn.textContent = 'Commencer';
+}
+
+function logoutPlayer() {
+  if (!confirm('Changer de joueur ? Tes pronos restent sauvegardés en ligne sous ton pseudo.')) return;
+  currentPlayer = null;
+  localStorage.removeItem('wc2026_player');
+  document.getElementById('player-badge').style.display = 'none';
+  document.getElementById('login-name').value = '';
+  document.getElementById('login-code').value = '';
+  showLogin();
+}
+
+async function initPlayer() {
+  const saved = localStorage.getItem('wc2026_player');
+  if (saved) { try { currentPlayer = JSON.parse(saved); } catch (e) {} }
+  if (currentPlayer && currentPlayer.name) {
+    showPlayerBadge();
+    if (db) {
+      try {
+        const snap = await db.collection('players').doc(playerDocId(currentPlayer.name)).get();
+        if (snap.exists) {
+          applyPronosToState(snap.data());
+          renderGroups(); seedBracket(); propagateBracket(); renderBracket();
+        }
+      } catch (e) { console.warn('Sync initiale impossible :', e); }
+    }
+  } else {
+    showLogin();
+  }
+  // Valider au clavier (Entrée)
+  ['login-name', 'login-code'].forEach(id => {
+    document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') submitLogin(); });
+  });
+}
+
+// ============================================================
+// CLASSEMENT (LEADERBOARD)
+// ============================================================
+async function renderLeaderboard() {
+  const container = document.getElementById('lb-container');
+  const statusEl = document.getElementById('lb-status');
+  if (!db) { container.innerHTML = '<div class="lb-empty">Connexion à la base indisponible (hors-ligne ?).</div>'; return; }
+  statusEl.textContent = 'Chargement…';
+  try {
+    const snap = await db.collection('players').get();
+    const players = [];
+    snap.forEach(doc => players.push(doc.data()));
+    statusEl.textContent = players.length + ' pronostiqueur' + (players.length > 1 ? 's' : '');
+    if (!players.length) {
+      container.innerHTML = '<div class="lb-empty">Aucun pronostic pour l\'instant. Sois le premier ! 🎯</div>';
+      return;
+    }
+    const rows = players.map(p => {
+      let played = 0, totalM = 0;
+      if (p.groups) Object.values(p.groups).forEach(g => (g.matches || []).forEach(m => { totalM++; if (m.result) played++; }));
+      const champ = (p.bracket && p.bracket.f && p.bracket.f[0]) ? p.bracket.f[0].winner : null;
+      return { name: p.name, played, totalM: totalM || 72, champ };
+    });
+    rows.sort((a, b) => b.played - a.played || a.name.localeCompare(b.name));
+    container.innerHTML = `<table class="lb-table">
+      <thead><tr><th>#</th><th>Joueur</th><th>Pronos poules</th><th>Champion désigné</th></tr></thead>
+      <tbody>${rows.map((r, i) => {
+        const isMe = currentPlayer && r.name === currentPlayer.name;
+        const pct = Math.round(r.played / (r.totalM || 72) * 100);
+        return `<tr class="${isMe ? 'me' : ''}">
+          <td class="lb-rank">${i + 1}</td>
+          <td>👤 ${escapeHtml(r.name)}${isMe ? ' <span style="color:#c9a227">(toi)</span>' : ''}</td>
+          <td><span class="lb-prog">${r.played}/${r.totalM}</span> <span style="color:#6a7b90">(${pct}%)</span></td>
+          <td>${r.champ ? flag(r.champ) + escapeHtml(r.champ) : '<span style="color:#6a7b90">—</span>'}</td>
+        </tr>`;
+      }).join('')}</tbody></table>`;
+  } catch (e) {
+    console.warn(e);
+    container.innerHTML = '<div class="lb-empty">Erreur de chargement du classement.</div>';
+  }
 }
 
 // ============================================================
@@ -806,6 +1129,7 @@ loadState();
 renderGroups();
 seedBracket();
 propagateBracket();
+initPlayer();
 </script>
 </body>
 </html>
