@@ -47,13 +47,31 @@
     border-radius: 12px;
     overflow: hidden;
   }
-  .group-card h3 {
+  .group-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     background: #1a3058;
-    padding: 10px 16px;
-    font-size: 1rem;
-    color: #c9a227;
+    padding: 6px 10px 6px 16px;
     border-bottom: 1px solid #2a4a70;
   }
+  .group-card h3 {
+    font-size: 1rem;
+    color: #c9a227;
+  }
+  .reset-group-btn {
+    background: transparent;
+    border: 1px solid #3a5a80;
+    color: #9fb4cc;
+    width: 26px; height: 26px;
+    border-radius: 6px;
+    font-size: 0.95rem;
+    cursor: pointer;
+    line-height: 1;
+    transition: all 0.15s;
+  }
+  .reset-group-btn:hover:not(:disabled) { background: #c0392b; border-color: #c0392b; color: #fff; }
+  .reset-group-btn:disabled { opacity: 0.3; cursor: default; }
 
   /* Standings table */
   .standings {
@@ -542,9 +560,20 @@ function renderGroups() {
     card.className = 'group-card';
 
     // Header
+    const header = document.createElement('div');
+    header.className = 'group-header';
     const h3 = document.createElement('h3');
     h3.textContent = `Groupe ${g}`;
-    card.appendChild(h3);
+    const resetG = document.createElement('button');
+    resetG.className = 'reset-group-btn';
+    resetG.title = `Réinitialiser les scores du groupe ${g}`;
+    resetG.innerHTML = '↺';
+    // Désactivé tant qu'aucun score n'est saisi dans ce groupe
+    resetG.disabled = grp.matches.every(m => !m.result && !(m.score && ((m.score[0] !== '' && m.score[0] != null) || (m.score[1] !== '' && m.score[1] != null))));
+    resetG.onclick = () => resetGroup(g);
+    header.appendChild(h3);
+    header.appendChild(resetG);
+    card.appendChild(header);
 
     // Standings
     const table = document.createElement('table');
@@ -737,6 +766,16 @@ function renderPodium() {
       <div class="team-name">${p.team ? (flag(p.team) + p.team) : '—'}</div>`;
     podium.appendChild(div);
   });
+}
+
+function resetGroup(g) {
+  if (!confirm(`Effacer tous les scores du groupe ${g} ?`)) return;
+  state.groups[g].matches.forEach(m => { m.result = null; m.score = undefined; });
+  saveState();
+  renderGroups();
+  seedBracket();
+  propagateBracket();
+  renderBracket();
 }
 
 function resetBracket() {
