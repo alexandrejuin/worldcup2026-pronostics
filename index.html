@@ -139,7 +139,7 @@
   /* BRACKET */
   .bracket-container { overflow-x: auto; }
   .bracket {
-    display: flex; gap: 0; min-width: 1100px;
+    display: flex; gap: 0; min-width: 1300px;
     padding: 20px 0;
   }
   .bracket-round {
@@ -466,9 +466,10 @@ function genMatches(teams) {
 let state = {
   groups: {},
   bracket: {
-    r16: Array(16).fill(null).map((_,i) => ({ id:`r16_${i}`, home:null, away:null, winner:null })),
-    qf:  Array(8).fill(null).map((_,i) => ({ id:`qf_${i}`,  home:null, away:null, winner:null })),
-    sf:  Array(4).fill(null).map((_,i) => ({ id:`sf_${i}`,  home:null, away:null, winner:null })),
+    r32: Array(16).fill(null).map((_,i) => ({ id:`r32_${i}`, home:null, away:null, winner:null })), // 16es (32 équipes)
+    r16: Array(8).fill(null).map((_,i) => ({ id:`r16_${i}`, home:null, away:null, winner:null })),   // 8es
+    qf:  Array(4).fill(null).map((_,i) => ({ id:`qf_${i}`,  home:null, away:null, winner:null })),    // quarts
+    sf:  Array(2).fill(null).map((_,i) => ({ id:`sf_${i}`,  home:null, away:null, winner:null })),    // demies
     tp:  [{ id:'tp_0', home:null, away:null, winner:null }],
     f:   [{ id:'f_0',  home:null, away:null, winner:null }],
   }
@@ -632,12 +633,12 @@ function seedBracket() {
     [thirds[3] || null, thirds[7] || null],
   ];
 
-  state.bracket.r16 = r16Pairs.map((pair, i) => {
-    const existing = state.bracket.r16[i];
+  state.bracket.r32 = r16Pairs.map((pair, i) => {
+    const existing = state.bracket.r32[i];
     const homeChanged = existing?.home !== (pair[0] || null);
     const awayChanged = existing?.away !== (pair[1] || null);
     return {
-      id: `r16_${i}`,
+      id: `r32_${i}`,
       home: pair[0] || null,
       away: pair[1] || null,
       winner: (homeChanged || awayChanged) ? null : existing?.winner,
@@ -646,45 +647,29 @@ function seedBracket() {
 }
 
 function propagateBracket() {
-  // QF from R16
-  const r16 = state.bracket.r16;
-  for (let i = 0; i < 8; i++) {
-    const m1 = r16[i*2], m2 = r16[i*2+1];
-    const qfm = state.bracket.qf[i];
-    const newHome = m1.winner || null;
-    const newAway = m2.winner || null;
-    if (qfm.home !== newHome || qfm.away !== newAway) {
-      qfm.home = newHome; qfm.away = newAway; qfm.winner = null;
+  // Fait avancer les vainqueurs d'un tour (source) vers le suivant (cible)
+  const advance = (source, target) => {
+    for (let i = 0; i < target.length; i++) {
+      const m1 = source[i*2], m2 = source[i*2+1];
+      const tm = target[i];
+      const newHome = (m1 && m1.winner) || null;
+      const newAway = (m2 && m2.winner) || null;
+      if (tm.home !== newHome || tm.away !== newAway) {
+        tm.home = newHome; tm.away = newAway; tm.winner = null;
+      }
     }
-  }
-  // SF from QF
-  for (let i = 0; i < 4; i++) {
-    const m1 = state.bracket.qf[i*2], m2 = state.bracket.qf[i*2+1];
-    const sfm = state.bracket.sf[i];
-    const newHome = m1.winner || null;
-    const newAway = m2.winner || null;
-    if (sfm.home !== newHome || sfm.away !== newAway) {
-      sfm.home = newHome; sfm.away = newAway; sfm.winner = null;
-    }
-  }
-  // Final & 3rd place from SF
-  const sf = state.bracket.sf;
-  const fm = state.bracket.f[0];
-  const tp = state.bracket.tp[0];
-  const newFH = sf[0].winner || null, newFA = sf[1].winner || null;
-  if (fm.home !== newFH || fm.away !== newFA) { fm.home = newFH; fm.away = newFA; fm.winner = null; }
+  };
+  advance(state.bracket.r32, state.bracket.r16); // 16es -> 8es
+  advance(state.bracket.r16, state.bracket.qf);  // 8es -> quarts
+  advance(state.bracket.qf,  state.bracket.sf);  // quarts -> demies
+  advance(state.bracket.sf,  state.bracket.f);   // demies -> finale
 
-  // 3rd place: SF losers
-  const sfLosers = [
-    sf[0].winner ? (sf[0].home === sf[0].winner ? sf[0].away : sf[0].home) : null,
-    sf[1].winner ? (sf[1].home === sf[1].winner ? sf[1].away : sf[1].home) : null,
-  ];
-  // also handle SF with 4 teams: take losers of sf[2] and sf[3]
-  // Extended: losers of sf[0] vs losers of sf[1], losers of sf[2] vs losers of sf[3]
-  // But we only have one final and one 3rd place match — combine losers of both semis
-  if (tp.home !== sfLosers[0] || tp.away !== sfLosers[1]) {
-    tp.home = sfLosers[0]; tp.away = sfLosers[1]; tp.winner = null;
-  }
+  // 3e place : les perdants des 2 demi-finales
+  const sf = state.bracket.sf;
+  const tp = state.bracket.tp[0];
+  const loser = m => (m && m.winner) ? (m.home === m.winner ? m.away : m.home) : null;
+  const l0 = loser(sf[0]), l1 = loser(sf[1]);
+  if (tp.home !== l0 || tp.away !== l1) { tp.home = l0; tp.away = l1; tp.winner = null; }
 }
 
 // ============================================================
@@ -837,7 +822,8 @@ function renderBracket() {
   bracket.className = 'bracket';
 
   const rounds = [
-    { key: 'r16', title: '16es de finale', matches: state.bracket.r16 },
+    { key: 'r32', title: '16es de finale', matches: state.bracket.r32 },
+    { key: 'r16', title: '8es de finale', matches: state.bracket.r16 },
     { key: 'qf',  title: 'Quarts de finale', matches: state.bracket.qf },
     { key: 'sf',  title: 'Demi-finales', matches: state.bracket.sf },
     { key: 'f',   title: 'Finale', matches: state.bracket.f },
@@ -927,11 +913,8 @@ function resetGroup(g) {
 
 function resetBracket() {
   if (!confirm('Réinitialiser tout le tableau éliminatoire ?')) return;
-  state.bracket.r16.forEach(m => { m.winner = null; });
-  state.bracket.qf.forEach(m => { m.winner = null; m.home = null; m.away = null; });
-  state.bracket.sf.forEach(m => { m.winner = null; m.home = null; m.away = null; });
-  state.bracket.f.forEach(m => { m.winner = null; m.home = null; m.away = null; });
-  state.bracket.tp.forEach(m => { m.winner = null; m.home = null; m.away = null; });
+  state.bracket.r32.forEach(m => { m.winner = null; });
+  ['r16', 'qf', 'sf', 'f', 'tp'].forEach(r => state.bracket[r].forEach(m => { m.winner = null; m.home = null; m.away = null; }));
   seedBracket();
   propagateBracket();
   saveState();
@@ -964,7 +947,7 @@ function buildPronosPayload() {
     }) };
   });
   const bracket = {};
-  ['r16', 'qf', 'sf', 'f', 'tp'].forEach(r => {
+  ['r32', 'r16', 'qf', 'sf', 'f', 'tp'].forEach(r => {
     bracket[r] = state.bracket[r].map(m => ({ winner: m.winner ?? null }));
   });
   return { groups, bracket };
@@ -1001,8 +984,8 @@ async function saveToCloud() {
 
 function clearAllPronos() {
   Object.keys(state.groups).forEach(g => state.groups[g].matches.forEach(m => { m.result = null; m.score = undefined; }));
-  state.bracket.r16.forEach(m => m.winner = null);
-  ['qf', 'sf', 'f', 'tp'].forEach(r => state.bracket[r].forEach(m => { m.winner = null; m.home = null; m.away = null; }));
+  state.bracket.r32.forEach(m => m.winner = null);
+  ['r16', 'qf', 'sf', 'f', 'tp'].forEach(r => state.bracket[r].forEach(m => { m.winner = null; m.home = null; m.away = null; }));
 }
 
 function applyPronosToState(data) {
@@ -1035,7 +1018,8 @@ function restoreBracketWinners(saved) {
       m.winner = (w && (w === m.home || w === m.away)) ? w : null;
     });
   };
-  apply('r16', saved.r16);
+  apply('r32', saved.r32);
+  propagateBracket(); apply('r16', saved.r16);
   propagateBracket(); apply('qf', saved.qf);
   propagateBracket(); apply('sf', saved.sf);
   propagateBracket(); apply('f', saved.f); apply('tp', saved.tp);
