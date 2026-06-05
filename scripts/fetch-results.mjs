@@ -47,7 +47,7 @@ const RAW_MAP = {
   'Netherlands': 'Pays-Bas', 'Japan': 'Japon', 'Sweden': 'Suède', 'Tunisia': 'Tunisie',
   'Belgium': 'Belgique', 'Egypt': 'Égypte', 'Iran': 'Iran', 'IR Iran': 'Iran',
   'New Zealand': 'Nouvelle-Zélande',
-  'Spain': 'Espagne', 'Cape Verde': 'Cap-Vert', 'Cabo Verde': 'Cap-Vert',
+  'Spain': 'Espagne', 'Cape Verde': 'Cap-Vert', 'Cabo Verde': 'Cap-Vert', 'Cape Verde Islands': 'Cap-Vert',
   'Saudi Arabia': 'Arabie Saoudite', 'Uruguay': 'Uruguay',
   'France': 'France', 'Senegal': 'Sénégal', 'Iraq': 'Irak', 'Norway': 'Norvège',
   'Argentina': 'Argentine', 'Austria': 'Autriche', 'Algeria': 'Algérie', 'Jordan': 'Jordanie',
