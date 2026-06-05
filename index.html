@@ -1072,7 +1072,9 @@ function showPage(id) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
   document.getElementById(id).classList.add('active');
-  event.target.classList.add('active');
+  const idx = { groups: 0, bracket: 1, leaderboard: 2 }[id];
+  const btn = document.querySelectorAll('nav button')[idx == null ? 0 : idx];
+  if (btn) btn.classList.add('active');
   if (id === 'bracket') { seedBracket(); propagateBracket(); renderBracket(); }
   if (id === 'leaderboard') { renderLeaderboard(); }
 }
@@ -1381,20 +1383,26 @@ async function renderLeaderboard() {
     try {
       const officialSets = hasResults ? loadIntoStateAndGetSets(official) : { qf: [], sf: [], fin: [], champ: null };
       rows = players.map(p => {
-        let played = 0, totalM = 0;
-        if (p.groups) Object.values(p.groups).forEach(g => (g.matches || []).forEach(m => { totalM++; if (m.result) played++; }));
-        const gp = scoreGroups(p.groups, official && official.groups);
-        const ps = loadIntoStateAndGetSets({ groups: p.groups || {}, bracket: p.bracket || {} });
-        let koPts = 0;
-        koPts += intersectCount(ps.qf, officialSets.qf) * SCORING.qf;
-        koPts += intersectCount(ps.sf, officialSets.sf) * SCORING.sf;
-        koPts += intersectCount(ps.fin, officialSets.fin) * SCORING.final;
-        if (ps.champ && ps.champ === officialSets.champ) koPts += SCORING.champion;
-        return {
-          name: p.name, played, totalM: totalM || 72,
-          champ: ps.champ, total: gp.pts + koPts,
-          groupPts: gp.pts, koPts, exact: gp.exact, res: gp.res
-        };
+        // Un prono mal formé ne doit jamais casser tout le classement
+        try {
+          let played = 0, totalM = 0;
+          if (p.groups) Object.values(p.groups).forEach(g => (g.matches || []).forEach(m => { totalM++; if (m.result) played++; }));
+          const gp = scoreGroups(p.groups, official && official.groups);
+          const ps = loadIntoStateAndGetSets({ groups: p.groups || {}, bracket: p.bracket || {} });
+          let koPts = 0;
+          koPts += intersectCount(ps.qf, officialSets.qf) * SCORING.qf;
+          koPts += intersectCount(ps.sf, officialSets.sf) * SCORING.sf;
+          koPts += intersectCount(ps.fin, officialSets.fin) * SCORING.final;
+          if (ps.champ && ps.champ === officialSets.champ) koPts += SCORING.champion;
+          return {
+            name: p.name || '???', played, totalM: totalM || 72,
+            champ: ps.champ, total: gp.pts + koPts,
+            groupPts: gp.pts, koPts, exact: gp.exact, res: gp.res
+          };
+        } catch (err) {
+          console.warn('Score impossible pour', p.name, err);
+          return { name: p.name || '???', played: 0, totalM: 72, champ: null, total: 0, groupPts: 0, koPts: 0, exact: 0, res: 0 };
+        }
       });
     } finally {
       applyPronosToState(snapshot); // restaure l'état actif
@@ -1435,7 +1443,12 @@ async function renderLeaderboard() {
     }
   } catch (e) {
     console.warn(e);
-    container.innerHTML = '<div class="lb-empty">Erreur de chargement du classement.</div>';
+    const offline = /permission|insufficient|unavailable|network|offline/i.test(String(e && e.message));
+    container.innerHTML = '<div class="lb-empty">' +
+      (offline
+        ? 'Classement inaccessible : connexion à la base bloquée (réseau, VPN ou bloqueur de pub ?).<br>Réessaie, ou désactive ton bloqueur de pub pour ce site.'
+        : 'Erreur de chargement du classement.') +
+      '<br><span style="font-size:0.72rem;color:#6a7b90">' + escapeHtml(String(e && e.message || e)) + '</span></div>';
   }
 }
 function medal(i) { return i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i + 1); }
