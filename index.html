@@ -282,6 +282,26 @@
   .lb-rank { font-weight: 700; color: #8a9bb0; width: 40px; }
   .lb-prog { color: #4caf50; font-weight: 600; }
   .lb-empty { text-align: center; color: #8a9bb0; padding: 40px; }
+  .lb-pts { font-weight: 800; color: #c9a227; font-size: 1.05rem; }
+  .lb-detail { font-size: 0.78rem; color: #8a9bb0; }
+
+  /* Admin */
+  #player-badge button { margin-left: 2px; }
+  #admin-banner {
+    display: none;
+    background: linear-gradient(90deg, #7a2a12, #a8431a);
+    color: #fff; padding: 10px 40px; font-size: 0.9rem;
+    align-items: center; gap: 14px;
+    border-bottom: 2px solid #ffb070;
+  }
+  #admin-banner.show { display: flex; }
+  #admin-banner button {
+    margin-left: auto; background: #0a1628; color: #ffd0a0;
+    border: 1px solid #ffb070; border-radius: 8px; padding: 6px 14px;
+    cursor: pointer; font-size: 0.82rem;
+  }
+  #admin-banner button:hover { background: #000; }
+  body.admin-mode header { background: linear-gradient(135deg, #5a2410, #2a1208); border-bottom-color: #ffb070; }
 </style>
 </head>
 <body>
@@ -293,9 +313,15 @@
   </div>
   <div id="player-badge" style="display:none;">
     <span id="player-name"></span>
+    <button onclick="toggleAdmin()" title="Mode admin (résultats officiels)">⚙️</button>
     <button onclick="logoutPlayer()" title="Changer de joueur">⇄</button>
   </div>
 </header>
+
+<div id="admin-banner">
+  🔧 <strong>MODE ADMIN</strong> — tu saisis les <strong>résultats officiels</strong> des matchs (ce ne sont pas tes pronos).
+  <button onclick="exitAdmin()">Quitter le mode admin</button>
+</div>
 
 <nav>
   <button class="active" onclick="showPage('groups')">Phase de Groupes</button>
@@ -377,6 +403,13 @@ try {
 } catch (e) { console.warn('Firebase indisponible :', e); }
 
 let currentPlayer = null; // { name, code }
+let adminMode = false;
+let adminCode = null;
+let playerSnapshotBeforeAdmin = null;
+const RESERVED_OFFICIAL_ID = 'official_results';
+
+// Barème (ajustable)
+const SCORING = { exactScore: 3, correctResult: 1, qf: 2, sf: 4, final: 7, champion: 10 };
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -480,7 +513,7 @@ function saveState() {
   Object.keys(state.groups).forEach(g => {
     toSave.groups[g] = { matches: state.groups[g].matches.map(m => ({ result: m.result, score: m.score })) };
   });
-  localStorage.setItem('wc2026', JSON.stringify(toSave));
+  if (!adminMode) localStorage.setItem('wc2026', JSON.stringify(toSave));
   scheduleCloudSave();
 }
 
@@ -939,19 +972,30 @@ function buildPronosPayload() {
 
 let cloudSaveTimer = null;
 function scheduleCloudSave() {
-  if (!currentPlayer || !db) return;
+  if (!db) return;
+  if (!adminMode && !currentPlayer) return;
   clearTimeout(cloudSaveTimer);
   cloudSaveTimer = setTimeout(saveToCloud, 1200);
 }
 async function saveToCloud() {
-  if (!currentPlayer || !db) return;
+  if (!db) return;
   try {
-    await db.collection('players').doc(playerDocId(currentPlayer.name)).set({
-      name: currentPlayer.name,
-      code: currentPlayer.code,
-      ...buildPronosPayload(),
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
+    if (adminMode) {
+      await db.collection('players').doc(RESERVED_OFFICIAL_ID).set({
+        name: '__OFFICIEL__',
+        code: adminCode,
+        isOfficial: true,
+        ...buildPronosPayload(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+    } else if (currentPlayer) {
+      await db.collection('players').doc(playerDocId(currentPlayer.name)).set({
+        name: currentPlayer.name,
+        code: currentPlayer.code,
+        ...buildPronosPayload(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+    }
   } catch (e) { console.warn('Échec sauvegarde cloud :', e); }
 }
 
@@ -1057,6 +1101,98 @@ function logoutPlayer() {
   showLogin();
 }
 
+// ============================================================
+// MODE ADMIN : RÉSULTATS OFFICIELS
+// ============================================================
+async function toggleAdmin() {
+  if (adminMode) { exitAdmin(); return; }
+  if (!db) { alert('Base de données indisponible.'); return; }
+  const input = prompt('Code admin (pour saisir les vrais résultats des matchs) :');
+  if (input == null) return;
+  const c = input.trim();
+  if (!/^\d{3,8}$/.test(c)) { alert('Le code admin doit être composé de 3 à 8 chiffres.'); return; }
+  try {
+    const snap = await db.collection('players').doc(RESERVED_OFFICIAL_ID).get();
+    if (snap.exists) {
+      if (snap.data().code !== c) { alert('Code admin incorrect.'); return; }
+      adminCode = c;
+      enterAdmin(snap.data());
+    } else {
+      if (!confirm("Aucun résultat officiel n'existe encore.\nCe code deviendra le CODE ADMIN définitif (retiens-le bien !).\n\nContinuer ?")) return;
+      adminCode = c;
+      enterAdmin(null);
+      saveToCloud(); // crée le doc officiel avec ce code
+    }
+  } catch (e) { alert('Erreur : ' + e.message); }
+}
+
+function enterAdmin(officialData) {
+  playerSnapshotBeforeAdmin = buildPronosPayload(); // mémorise les pronos du joueur
+  adminMode = true;
+  if (officialData) applyPronosToState(officialData); else clearAllPronos();
+  document.body.classList.add('admin-mode');
+  document.getElementById('admin-banner').classList.add('show');
+  document.getElementById('player-name').textContent = '🔧 ADMIN — Résultats officiels';
+  renderGroups(); seedBracket(); propagateBracket(); renderBracket();
+  showPage_internal('groups');
+}
+
+function exitAdmin() {
+  adminMode = false;
+  document.body.classList.remove('admin-mode');
+  document.getElementById('admin-banner').classList.remove('show');
+  if (playerSnapshotBeforeAdmin) applyPronosToState(playerSnapshotBeforeAdmin);
+  playerSnapshotBeforeAdmin = null;
+  showPlayerBadge();
+  renderGroups(); seedBracket(); propagateBracket(); renderBracket();
+}
+
+// bascule de page sans dépendre d'un event (utilisé en interne)
+function showPage_internal(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  const idx = { groups: 0, bracket: 1, leaderboard: 2 }[id] || 0;
+  document.querySelectorAll('nav button')[idx].classList.add('active');
+}
+
+// ============================================================
+// CALCUL DES POINTS
+// ============================================================
+function bracketSetsFromState() {
+  const teamsOf = arr => arr.flatMap(m => [m.home, m.away]).filter(Boolean);
+  return {
+    qf: teamsOf(state.bracket.qf),
+    sf: teamsOf(state.bracket.sf),
+    fin: teamsOf(state.bracket.f),
+    champ: state.bracket.f[0] ? (state.bracket.f[0].winner || null) : null
+  };
+}
+function loadIntoStateAndGetSets(payload) {
+  applyPronosToState(payload || {});
+  return bracketSetsFromState();
+}
+function scoreGroups(playerGroups, officialGroups) {
+  let pts = 0, exact = 0, res = 0;
+  Object.keys(GROUPS_DATA).forEach(g => {
+    const offM = (officialGroups && officialGroups[g] && officialGroups[g].matches) || [];
+    const plM = (playerGroups && playerGroups[g] && playerGroups[g].matches) || [];
+    offM.forEach((om, i) => {
+      if (!om || !om.result) return;          // pas de résultat officiel
+      const pm = plM[i];
+      if (!pm || !pm.result) return;          // joueur n'a pas pronostiqué
+      if (pm.result !== om.result) return;    // mauvais résultat
+      const exactOk = pm.score && om.score &&
+        pm.score[0] != null && pm.score[1] != null && om.score[0] != null && om.score[1] != null &&
+        Number(pm.score[0]) === Number(om.score[0]) && Number(pm.score[1]) === Number(om.score[1]);
+      if (exactOk) { pts += SCORING.exactScore; exact++; }
+      else { pts += SCORING.correctResult; res++; }
+    });
+  });
+  return { pts, exact, res };
+}
+function intersectCount(a, b) { return a.filter(x => x && b.includes(x)).length; }
+
 async function initPlayer() {
   const saved = localStorage.getItem('wc2026_player');
   if (saved) { try { currentPlayer = JSON.parse(saved); } catch (e) {} }
@@ -1086,41 +1222,92 @@ async function initPlayer() {
 async function renderLeaderboard() {
   const container = document.getElementById('lb-container');
   const statusEl = document.getElementById('lb-status');
+  const noteEl = document.getElementById('lb-note');
   if (!db) { container.innerHTML = '<div class="lb-empty">Connexion à la base indisponible (hors-ligne ?).</div>'; return; }
   statusEl.textContent = 'Chargement…';
   try {
     const snap = await db.collection('players').get();
     const players = [];
-    snap.forEach(doc => players.push(doc.data()));
+    let official = null;
+    snap.forEach(doc => {
+      if (doc.id === RESERVED_OFFICIAL_ID) official = doc.data();
+      else players.push(doc.data());
+    });
     statusEl.textContent = players.length + ' pronostiqueur' + (players.length > 1 ? 's' : '');
     if (!players.length) {
       container.innerHTML = '<div class="lb-empty">Aucun pronostic pour l\'instant. Sois le premier ! 🎯</div>';
       return;
     }
-    const rows = players.map(p => {
-      let played = 0, totalM = 0;
-      if (p.groups) Object.values(p.groups).forEach(g => (g.matches || []).forEach(m => { totalM++; if (m.result) played++; }));
-      const champ = (p.bracket && p.bracket.f && p.bracket.f[0]) ? p.bracket.f[0].winner : null;
-      return { name: p.name, played, totalM: totalM || 72, champ };
-    });
-    rows.sort((a, b) => b.played - a.played || a.name.localeCompare(b.name));
-    container.innerHTML = `<table class="lb-table">
-      <thead><tr><th>#</th><th>Joueur</th><th>Pronos poules</th><th>Champion désigné</th></tr></thead>
-      <tbody>${rows.map((r, i) => {
-        const isMe = currentPlayer && r.name === currentPlayer.name;
-        const pct = Math.round(r.played / (r.totalM || 72) * 100);
-        return `<tr class="${isMe ? 'me' : ''}">
-          <td class="lb-rank">${i + 1}</td>
-          <td>👤 ${escapeHtml(r.name)}${isMe ? ' <span style="color:#c9a227">(toi)</span>' : ''}</td>
-          <td><span class="lb-prog">${r.played}/${r.totalM}</span> <span style="color:#6a7b90">(${pct}%)</span></td>
-          <td>${r.champ ? flag(r.champ) + escapeHtml(r.champ) : '<span style="color:#6a7b90">—</span>'}</td>
-        </tr>`;
-      }).join('')}</tbody></table>`;
+
+    const hasResults = official && (
+      Object.values(official.groups || {}).some(g => (g.matches || []).some(m => m && m.result)) ||
+      Object.values(official.bracket || {}).some(arr => (arr || []).some(m => m && m.winner))
+    );
+
+    // On va manipuler le state pour reconstruire les brackets : on sauvegarde l'état actif
+    const snapshot = buildPronosPayload();
+    let rows;
+    try {
+      const officialSets = hasResults ? loadIntoStateAndGetSets(official) : { qf: [], sf: [], fin: [], champ: null };
+      rows = players.map(p => {
+        let played = 0, totalM = 0;
+        if (p.groups) Object.values(p.groups).forEach(g => (g.matches || []).forEach(m => { totalM++; if (m.result) played++; }));
+        const gp = scoreGroups(p.groups, official && official.groups);
+        const ps = loadIntoStateAndGetSets({ groups: p.groups || {}, bracket: p.bracket || {} });
+        let koPts = 0;
+        koPts += intersectCount(ps.qf, officialSets.qf) * SCORING.qf;
+        koPts += intersectCount(ps.sf, officialSets.sf) * SCORING.sf;
+        koPts += intersectCount(ps.fin, officialSets.fin) * SCORING.final;
+        if (ps.champ && ps.champ === officialSets.champ) koPts += SCORING.champion;
+        return {
+          name: p.name, played, totalM: totalM || 72,
+          champ: ps.champ, total: gp.pts + koPts,
+          groupPts: gp.pts, koPts, exact: gp.exact, res: gp.res
+        };
+      });
+    } finally {
+      applyPronosToState(snapshot); // restaure l'état actif
+    }
+
+    if (hasResults) {
+      noteEl.innerHTML = 'Barème : <strong>score exact = ' + SCORING.exactScore + ' pts</strong>, bon résultat = ' + SCORING.correctResult +
+        ' pt · Phase finale (par équipe bien placée) : quart = ' + SCORING.qf + ', demie = ' + SCORING.sf +
+        ', finale = ' + SCORING.final + ', champion = ' + SCORING.champion + '.';
+      rows.sort((a, b) => b.total - a.total || b.played - a.played || a.name.localeCompare(b.name));
+      container.innerHTML = `<table class="lb-table">
+        <thead><tr><th>#</th><th>Joueur</th><th>Points</th><th>Détail</th><th>Champion</th></tr></thead>
+        <tbody>${rows.map((r, i) => {
+          const isMe = currentPlayer && r.name === currentPlayer.name;
+          return `<tr class="${isMe ? 'me' : ''}">
+            <td class="lb-rank">${medal(i)}</td>
+            <td>👤 ${escapeHtml(r.name)}${isMe ? ' <span style="color:#c9a227">(toi)</span>' : ''}</td>
+            <td><span class="lb-pts">${r.total}</span> pts</td>
+            <td class="lb-detail">poules ${r.groupPts} (${r.exact}🎯/${r.res}✓) · finale ${r.koPts}</td>
+            <td>${r.champ ? flag(r.champ) + escapeHtml(r.champ) : '<span style="color:#6a7b90">—</span>'}</td>
+          </tr>`;
+        }).join('')}</tbody></table>`;
+    } else {
+      noteEl.innerHTML = 'Le <strong>calcul des points</strong> s\'activera dès que les vrais résultats seront saisis (mode admin ⚙️). Pour l\'instant : taux de remplissage et champion désigné.';
+      rows.sort((a, b) => b.played - a.played || a.name.localeCompare(b.name));
+      container.innerHTML = `<table class="lb-table">
+        <thead><tr><th>#</th><th>Joueur</th><th>Pronos poules</th><th>Champion désigné</th></tr></thead>
+        <tbody>${rows.map((r, i) => {
+          const isMe = currentPlayer && r.name === currentPlayer.name;
+          const pct = Math.round(r.played / (r.totalM || 72) * 100);
+          return `<tr class="${isMe ? 'me' : ''}">
+            <td class="lb-rank">${i + 1}</td>
+            <td>👤 ${escapeHtml(r.name)}${isMe ? ' <span style="color:#c9a227">(toi)</span>' : ''}</td>
+            <td><span class="lb-prog">${r.played}/${r.totalM}</span> <span style="color:#6a7b90">(${pct}%)</span></td>
+            <td>${r.champ ? flag(r.champ) + escapeHtml(r.champ) : '<span style="color:#6a7b90">—</span>'}</td>
+          </tr>`;
+        }).join('')}</tbody></table>`;
+    }
   } catch (e) {
     console.warn(e);
     container.innerHTML = '<div class="lb-empty">Erreur de chargement du classement.</div>';
   }
 }
+function medal(i) { return i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i + 1); }
 
 // ============================================================
 // INIT
