@@ -318,6 +318,12 @@
   .bracket-round.locked h4::after { content: ' 🔒'; }
   .bracket-round.locked .bracket-team { cursor: default !important; }
   .round-time { display:block; font-size:0.62rem; color:#6a7b90; font-weight:400; text-transform:none; letter-spacing:0; margin-top:2px; }
+  .bracket-team .adv { font-weight:800; font-size:0.78rem; margin-left:4px; }
+  .bracket-team .adv.ok { color:#5fd17a; }
+  .bracket-team .adv.miss { color:#ff8080; }
+  .podium-cmp { font-size:0.72rem; font-weight:700; margin-top:6px; padding:2px 8px; border-radius:10px; display:inline-block; }
+  .podium-cmp.ok { background:#15401f; color:#5fd17a; }
+  .podium-cmp.miss { background:#3a1a1a; color:#ff8080; }
 </style>
 </head>
 <body>
@@ -575,6 +581,29 @@ const KO_KICKOFFS = {
   tp:  '2026-07-18T21:00:00Z',
   f:   '2026-07-19T19:00:00Z',
 };
+
+// Fenêtre de dates de chaque tour (affichage)
+const KO_DATES = {
+  r32: '28 juin → 4 juil.',
+  r16: '4 → 7 juil.',
+  qf:  '9 → 12 juil.',
+  sf:  '14 → 15 juil.',
+  tp:  '18 juil.',
+  f:   '19 juil.',
+};
+// Quel "set" officiel correspond à chaque tour (pour le marquage réel vs prono)
+const KO_SET = { r32: 'reachedR32', r16: 'reachedR16', qf: 'reachedQF', sf: 'reachedSF', f: 'reachedFinal' };
+function koMarker(roundKey, team) {
+  if (!team) return '';
+  const ko = officialResults && officialResults.officialKO;
+  const setName = KO_SET[roundKey];
+  if (!ko || !setName) return '';
+  const set = ko[setName];
+  if (!set || !set.length) return ''; // tour pas encore joué
+  return set.includes(team)
+    ? ' <span class="adv ok" title="A vraiment atteint ce tour">✓</span>'
+    : ' <span class="adv miss" title="N\'a pas atteint ce tour">✗</span>';
+}
 
 function isLocked(iso) { return !!iso && Date.now() >= new Date(iso).getTime(); }
 function lockingActive() { return !adminMode; } // l'admin n'est jamais verrouillé
@@ -1013,10 +1042,10 @@ function renderBracket() {
     if (roundLocked) col.classList.add('locked');
     const h4 = document.createElement('h4');
     h4.textContent = title;
-    if (KO_KICKOFFS[key]) {
+    if (KO_DATES[key]) {
       const rt = document.createElement('span');
       rt.className = 'round-time';
-      rt.textContent = (roundLocked ? 'Verrouillé · dès le ' : 'Dès le ') + fmtParis(KO_KICKOFFS[key]);
+      rt.textContent = (roundLocked ? '🔓→🔒 ' : '🗓 ') + KO_DATES[key];
       h4.appendChild(rt);
     }
     col.appendChild(h4);
@@ -1032,7 +1061,7 @@ function renderBracket() {
         const btn = document.createElement('div');
         btn.className = 'bracket-team' +
           (!team ? ' empty' : m.winner === team ? ' winner' : m.winner && m.winner !== team ? ' loser' : '');
-        btn.innerHTML = team ? (flag(team) + team) : (ti === 0 ? 'À déterminer' : 'À déterminer');
+        btn.innerHTML = team ? (flag(team) + team + koMarker(key, team)) : 'À déterminer';
         if (team && m.home && m.away && !roundLocked) {
           btn.onclick = () => setBracketWinner(key, m.id, team);
         }
@@ -1070,18 +1099,27 @@ function renderPodium() {
     : null;
   const third = state.bracket.tp[0]?.winner;
 
+  const ko = officialResults && officialResults.officialKO;
   const places = [
-    { medal: '🥇', place: '1er — Champion', team: champion },
-    { medal: '🥈', place: '2e — Finaliste', team: finalist },
-    { medal: '🥉', place: '3e place', team: third },
+    { medal: '🥇', place: '1er — Champion', team: champion, real: ko && ko.champion },
+    { medal: '🥈', place: '2e — Finaliste', team: finalist, realSet: ko && ko.reachedFinal },
+    { medal: '🥉', place: '3e place', team: third, real: ko && ko.third },
   ];
 
   places.forEach(p => {
+    let cmp = '';
+    if (p.team) {
+      if (p.real) {
+        cmp = (p.team === p.real) ? '<div class="podium-cmp ok">✓ exact</div>' : '<div class="podium-cmp miss">✗ raté</div>';
+      } else if (p.realSet && p.realSet.length) {
+        cmp = p.realSet.includes(p.team) ? '<div class="podium-cmp ok">✓ en finale</div>' : '<div class="podium-cmp miss">✗ raté</div>';
+      }
+    }
     const div = document.createElement('div');
     div.className = 'podium-item';
     div.innerHTML = `<div class="medal">${p.medal}</div>
       <div class="place">${p.place}</div>
-      <div class="team-name">${p.team ? (flag(p.team) + p.team) : '—'}</div>`;
+      <div class="team-name">${p.team ? (flag(p.team) + p.team) : '—'}</div>${cmp}`;
     podium.appendChild(div);
   });
 }
@@ -1113,7 +1151,7 @@ function showPage(id) {
   const idx = { groups: 0, bracket: 1, leaderboard: 2 }[id];
   const btn = document.querySelectorAll('nav button')[idx == null ? 0 : idx];
   if (btn) btn.classList.add('active');
-  if (id === 'bracket') { seedBracket(); propagateBracket(); renderBracket(); }
+  if (id === 'bracket') { seedBracket(); propagateBracket(); renderBracket(); loadOfficial(); }
   if (id === 'leaderboard') { renderLeaderboard(); }
   if (id === 'groups') { loadOfficial(); }
 }
@@ -1125,6 +1163,7 @@ async function loadOfficial() {
     const snap = await db.collection('players').doc(RESERVED_OFFICIAL_ID).get();
     officialResults = snap.exists ? snap.data() : null;
     renderGroups();
+    renderBracket();
   } catch (e) { console.warn('Chargement résultats officiels impossible :', e); }
 }
 

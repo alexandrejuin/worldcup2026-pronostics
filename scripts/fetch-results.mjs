@@ -89,8 +89,9 @@ function buildOfficialPayload(matches) {
   const groups = {};
   Object.keys(GROUPS_DATA).forEach(g => { groups[g] = { matches: Array.from({ length: 6 }, () => ({ result: null, score: null })) }; });
 
+  const reachedR32 = new Set(), reachedR16 = new Set();
   const reachedQF = new Set(), reachedSF = new Set(), reachedFinal = new Set();
-  let champion = null;
+  let champion = null, third = null;
 
   for (const m of matches) {
     if (m.status !== 'FINISHED') continue;
@@ -112,10 +113,19 @@ function buildOfficialPayload(matches) {
       if (sH == null || sA == null) continue;
       const result = sH > sA ? 'home' : sA > sH ? 'away' : 'draw';
       groups[g].matches[pos.idx] = { result, score: [sH, sA] };
+    } else if (stage === 'LAST_32') {
+      reachedR32.add(homeFr); reachedR32.add(awayFr);
+    } else if (stage === 'LAST_16') {
+      reachedR16.add(homeFr); reachedR16.add(awayFr);
     } else if (stage === 'QUARTER_FINALS') {
       reachedQF.add(homeFr); reachedQF.add(awayFr);
     } else if (stage === 'SEMI_FINALS') {
       reachedSF.add(homeFr); reachedSF.add(awayFr);
+    } else if (stage === 'THIRD_PLACE') {
+      const w = m.score && m.score.winner;
+      if (w === 'HOME_TEAM') third = homeFr;
+      else if (w === 'AWAY_TEAM') third = awayFr;
+      else if (ft.home != null && ft.away != null && ft.home !== ft.away) third = ft.home > ft.away ? homeFr : awayFr;
     } else if (stage === 'FINAL') {
       reachedFinal.add(homeFr); reachedFinal.add(awayFr);
       const w = m.score && m.score.winner;
@@ -126,8 +136,9 @@ function buildOfficialPayload(matches) {
   }
 
   const officialKO = {
+    reachedR32: [...reachedR32], reachedR16: [...reachedR16],
     reachedQF: [...reachedQF], reachedSF: [...reachedSF],
-    reachedFinal: [...reachedFinal], champion,
+    reachedFinal: [...reachedFinal], champion, third,
   };
   return { groups, officialKO };
 }
