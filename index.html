@@ -623,9 +623,19 @@ function loadState() {
           });
         }
       });
-      if (parsed.bracket) state.bracket = parsed.bracket;
+      // N'adopter le bracket sauvegardé que s'il a la BONNE structure
+      // (sinon : ancienne version sans r32 → on repart d'un bracket neuf,
+      //  les résultats de poules sont conservés, le bracket se re-déduit).
+      if (parsed.bracket && isValidBracketShape(parsed.bracket)) {
+        state.bracket = parsed.bracket;
+      }
     }
   } catch(e) {}
+}
+
+function isValidBracketShape(b) {
+  const expected = { r32: 16, r16: 8, qf: 4, sf: 2, f: 1, tp: 1 };
+  return Object.keys(expected).every(k => Array.isArray(b[k]) && b[k].length === expected[k]);
 }
 
 function saveState() {
@@ -755,8 +765,9 @@ function seedBracket() {
     [thirds[3] || null, thirds[7] || null],
   ];
 
+  const prevR32 = Array.isArray(state.bracket.r32) ? state.bracket.r32 : [];
   state.bracket.r32 = r16Pairs.map((pair, i) => {
-    const existing = state.bracket.r32[i];
+    const existing = prevR32[i];
     const homeChanged = existing?.home !== (pair[0] || null);
     const awayChanged = existing?.away !== (pair[1] || null);
     return {
