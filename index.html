@@ -302,6 +302,15 @@
   }
   #admin-banner button:hover { background: #000; }
   body.admin-mode header { background: linear-gradient(135deg, #5a2410, #2a1208); border-bottom-color: #ffb070; }
+
+  /* Verrouillage / horaires */
+  .match-meta { font-size: 0.68rem; color: #6a7b90; text-align: center; margin: -2px 0 10px; }
+  .match-meta .lock { color: #e08a3c; font-weight: 600; }
+  .match-meta .kick { color: #6a7b90; }
+  .score-input:disabled { opacity: 0.45; cursor: not-allowed; background: #11203a; }
+  .bracket-round.locked h4::after { content: ' 🔒'; }
+  .bracket-round.locked .bracket-team { cursor: default !important; }
+  .round-time { display:block; font-size:0.62rem; color:#6a7b90; font-weight:400; text-transform:none; letter-spacing:0; margin-top:2px; }
 </style>
 </head>
 <body>
@@ -334,7 +343,7 @@
     <span><div class="dot gold"></div> Qualifié (1er)</span>
     <span><div class="dot blue"></div> Qualifié (2e)</span>
     <span><div class="dot green"></div> Qualifié (3e meilleur)</span>
-    <span style="margin-left:auto; color:#c9a227; font-size:0.8rem;">Saisissez le score de chaque match (les nuls sont gérés automatiquement)</span>
+    <span style="margin-left:auto; color:#c9a227; font-size:0.8rem;">Saisissez le score de chaque match · 🔒 verrouillage au coup d'envoi (heure de Paris)</span>
   </div>
   <div class="rules-note">
     <strong>Règles de classement :</strong> Points (V=3, N=1, D=0) · Différence de buts · Buts marqués · Résultat direct (H2H) · Tirage au sort.<br>
@@ -452,6 +461,119 @@ const FLAGS = {
   'Portugal':'🇵🇹','Colombie':'🇨🇴','Ouzbékistan':'🇺🇿','RD Congo':'🇨🇩',
   'Angleterre':'🏴󠁧󠁢󠁥󠁮󠁧󠁿','Croatie':'🇭🇷','Panama':'🇵🇦','Ghana':'🇬🇭',
 };
+
+// ============================================================
+// CALENDRIER (heures de coup d'envoi en UTC) — source : ESPN + Sky Sports
+// Verrouillage : un match poule se fige à son coup d'envoi ;
+// un tour de phase finale se fige au coup d'envoi de son 1er match.
+// ============================================================
+const FIXTURES = [
+  // Groupe A
+  ['Mexique','Afrique du Sud','2026-06-11T19:00:00Z'],
+  ['Corée du Sud','Tchéquie','2026-06-12T02:00:00Z'],
+  ['Tchéquie','Afrique du Sud','2026-06-18T16:00:00Z'],
+  ['Mexique','Corée du Sud','2026-06-19T01:00:00Z'],
+  ['Tchéquie','Mexique','2026-06-25T01:00:00Z'],
+  ['Afrique du Sud','Corée du Sud','2026-06-25T01:00:00Z'],
+  // Groupe B
+  ['Canada','Bosnie-Herzégovine','2026-06-12T19:00:00Z'],
+  ['Qatar','Suisse','2026-06-13T19:00:00Z'],
+  ['Suisse','Bosnie-Herzégovine','2026-06-18T19:00:00Z'],
+  ['Canada','Qatar','2026-06-18T22:00:00Z'],
+  ['Suisse','Canada','2026-06-24T19:00:00Z'],
+  ['Bosnie-Herzégovine','Qatar','2026-06-24T19:00:00Z'],
+  // Groupe C
+  ['Brésil','Maroc','2026-06-13T22:00:00Z'],
+  ['Haïti','Écosse','2026-06-14T01:00:00Z'],
+  ['Écosse','Maroc','2026-06-19T22:00:00Z'],
+  ['Brésil','Haïti','2026-06-20T01:00:00Z'],
+  ['Écosse','Brésil','2026-06-24T22:00:00Z'],
+  ['Maroc','Haïti','2026-06-24T22:00:00Z'],
+  // Groupe D
+  ['États-Unis','Paraguay','2026-06-13T01:00:00Z'],
+  ['Australie','Turquie','2026-06-14T04:00:00Z'],
+  ['États-Unis','Australie','2026-06-19T19:00:00Z'],
+  ['Turquie','Paraguay','2026-06-20T04:00:00Z'],
+  ['Turquie','États-Unis','2026-06-26T02:00:00Z'],
+  ['Paraguay','Australie','2026-06-26T02:00:00Z'],
+  // Groupe E
+  ['Allemagne','Curaçao','2026-06-14T17:00:00Z'],
+  ["Côte d'Ivoire",'Équateur','2026-06-14T23:00:00Z'],
+  ['Allemagne',"Côte d'Ivoire",'2026-06-20T20:00:00Z'],
+  ['Équateur','Curaçao','2026-06-21T00:00:00Z'],
+  ['Équateur','Allemagne','2026-06-25T20:00:00Z'],
+  ['Curaçao',"Côte d'Ivoire",'2026-06-25T20:00:00Z'],
+  // Groupe F
+  ['Pays-Bas','Japon','2026-06-14T20:00:00Z'],
+  ['Suède','Tunisie','2026-06-15T02:00:00Z'],
+  ['Pays-Bas','Suède','2026-06-20T17:00:00Z'],
+  ['Tunisie','Japon','2026-06-21T04:00:00Z'],
+  ['Japon','Suède','2026-06-25T23:00:00Z'],
+  ['Tunisie','Pays-Bas','2026-06-25T23:00:00Z'],
+  // Groupe G
+  ['Belgique','Égypte','2026-06-15T19:00:00Z'],
+  ['Iran','Nouvelle-Zélande','2026-06-16T01:00:00Z'],
+  ['Belgique','Iran','2026-06-21T19:00:00Z'],
+  ['Nouvelle-Zélande','Égypte','2026-06-22T01:00:00Z'],
+  ['Égypte','Iran','2026-06-27T03:00:00Z'],
+  ['Nouvelle-Zélande','Belgique','2026-06-27T03:00:00Z'],
+  // Groupe H
+  ['Espagne','Cap-Vert','2026-06-15T16:00:00Z'],
+  ['Arabie Saoudite','Uruguay','2026-06-15T22:00:00Z'],
+  ['Espagne','Arabie Saoudite','2026-06-21T16:00:00Z'],
+  ['Uruguay','Cap-Vert','2026-06-21T22:00:00Z'],
+  ['Cap-Vert','Arabie Saoudite','2026-06-27T00:00:00Z'],
+  ['Uruguay','Espagne','2026-06-27T00:00:00Z'],
+  // Groupe I
+  ['France','Sénégal','2026-06-16T19:00:00Z'],
+  ['Irak','Norvège','2026-06-16T22:00:00Z'],
+  ['France','Irak','2026-06-22T21:00:00Z'],
+  ['Norvège','Sénégal','2026-06-23T00:00:00Z'],
+  ['Norvège','France','2026-06-26T19:00:00Z'],
+  ['Sénégal','Irak','2026-06-26T19:00:00Z'],
+  // Groupe J
+  ['Argentine','Algérie','2026-06-17T01:00:00Z'],
+  ['Autriche','Jordanie','2026-06-17T04:00:00Z'],
+  ['Argentine','Autriche','2026-06-22T17:00:00Z'],
+  ['Jordanie','Algérie','2026-06-23T03:00:00Z'],
+  ['Algérie','Autriche','2026-06-28T02:00:00Z'],
+  ['Jordanie','Argentine','2026-06-28T02:00:00Z'],
+  // Groupe K
+  ['Portugal','RD Congo','2026-06-17T17:00:00Z'],
+  ['Ouzbékistan','Colombie','2026-06-18T02:00:00Z'],
+  ['Portugal','Ouzbékistan','2026-06-23T17:00:00Z'],
+  ['Colombie','RD Congo','2026-06-24T02:00:00Z'],
+  ['Colombie','Portugal','2026-06-27T23:30:00Z'],
+  ['RD Congo','Ouzbékistan','2026-06-27T23:30:00Z'],
+  // Groupe L
+  ['Angleterre','Croatie','2026-06-17T20:00:00Z'],
+  ['Ghana','Panama','2026-06-17T23:00:00Z'],
+  ['Angleterre','Ghana','2026-06-23T20:00:00Z'],
+  ['Panama','Croatie','2026-06-23T23:00:00Z'],
+  ['Panama','Angleterre','2026-06-27T21:00:00Z'],
+  ['Croatie','Ghana','2026-06-27T21:00:00Z'],
+];
+function pairKey(a, b) { return [a, b].sort().join('@@'); }
+const KICKOFFS = {};
+FIXTURES.forEach(([a, b, iso]) => { KICKOFFS[pairKey(a, b)] = iso; });
+function groupKickoff(home, away) { return (home && away) ? (KICKOFFS[pairKey(home, away)] || null) : null; }
+
+// Heure de coup d'envoi du 1er match de chaque tour (verrouillage par tour)
+const KO_KICKOFFS = {
+  r32: '2026-06-28T19:00:00Z',
+  r16: '2026-07-04T17:00:00Z',
+  qf:  '2026-07-09T20:00:00Z',
+  sf:  '2026-07-14T19:00:00Z',
+  tp:  '2026-07-18T21:00:00Z',
+  f:   '2026-07-19T19:00:00Z',
+};
+
+function isLocked(iso) { return !!iso && Date.now() >= new Date(iso).getTime(); }
+function lockingActive() { return !adminMode; } // l'admin n'est jamais verrouillé
+function fmtParis(iso) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleString('fr-FR', { timeZone: 'Europe/Paris', weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
 
 // Generate round-robin matches for a group
 function genMatches(teams) {
@@ -763,6 +885,11 @@ function renderGroups() {
       hInput.onchange = onScore;
       aInput.onchange = onScore;
 
+      // Verrouillage à l'heure du coup d'envoi (sauf admin)
+      const iso = groupKickoff(m.home, m.away);
+      const locked = lockingActive() && isLocked(iso);
+      if (locked) { hInput.disabled = true; aInput.disabled = true; }
+
       scoreWrap.appendChild(hInput);
       scoreWrap.appendChild(dash);
       scoreWrap.appendChild(aInput);
@@ -776,6 +903,16 @@ function renderGroups() {
       row.appendChild(scoreWrap);
       row.appendChild(aBtn);
       ml.appendChild(row);
+
+      // Méta : horaire (heure de Paris) + cadenas
+      const meta = document.createElement('div');
+      meta.className = 'match-meta';
+      if (iso) {
+        meta.innerHTML = locked
+          ? `<span class="lock">🔒 Verrouillé</span> · ${fmtParis(iso)}`
+          : `<span class="kick">🕒 ${fmtParis(iso)}</span>`;
+      }
+      ml.appendChild(meta);
     });
 
     card.appendChild(ml);
@@ -789,6 +926,7 @@ function renderGroups() {
 
 function setMatchScore(g, mi, hVal, aVal) {
   const m = state.groups[g].matches[mi];
+  if (lockingActive() && isLocked(groupKickoff(m.home, m.away))) return; // match verrouillé
   const h = hVal === '' || hVal == null ? null : parseInt(hVal);
   const a = aVal === '' || aVal == null ? null : parseInt(aVal);
 
@@ -833,8 +971,16 @@ function renderBracket() {
   rounds.forEach(({ key, title, matches }) => {
     const col = document.createElement('div');
     col.className = 'bracket-round';
+    const roundLocked = lockingActive() && isLocked(KO_KICKOFFS[key]);
+    if (roundLocked) col.classList.add('locked');
     const h4 = document.createElement('h4');
     h4.textContent = title;
+    if (KO_KICKOFFS[key]) {
+      const rt = document.createElement('span');
+      rt.className = 'round-time';
+      rt.textContent = (roundLocked ? 'Verrouillé · dès le ' : 'Dès le ') + fmtParis(KO_KICKOFFS[key]);
+      h4.appendChild(rt);
+    }
     col.appendChild(h4);
 
     const matchesDiv = document.createElement('div');
@@ -849,7 +995,7 @@ function renderBracket() {
         btn.className = 'bracket-team' +
           (!team ? ' empty' : m.winner === team ? ' winner' : m.winner && m.winner !== team ? ' loser' : '');
         btn.innerHTML = team ? (flag(team) + team) : (ti === 0 ? 'À déterminer' : 'À déterminer');
-        if (team && m.home && m.away) {
+        if (team && m.home && m.away && !roundLocked) {
           btn.onclick = () => setBracketWinner(key, m.id, team);
         }
         mDiv.appendChild(btn);
@@ -867,6 +1013,7 @@ function renderBracket() {
 }
 
 function setBracketWinner(roundKey, matchId, team) {
+  if (lockingActive() && isLocked(KO_KICKOFFS[roundKey])) return; // tour verrouillé
   const match = state.bracket[roundKey].find(m => m.id === matchId);
   if (!match) return;
   match.winner = team;
@@ -1294,6 +1441,26 @@ async function renderLeaderboard() {
 function medal(i) { return i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i + 1); }
 
 // ============================================================
+// VERROUILLAGE AUTOMATIQUE (tick)
+// ============================================================
+function lockSignature() {
+  if (adminMode) return 'admin';
+  let s = '';
+  Object.values(state.groups).forEach(grp => grp.matches.forEach(m => { s += isLocked(groupKickoff(m.home, m.away)) ? '1' : '0'; }));
+  ['r32', 'r16', 'qf', 'sf', 'tp', 'f'].forEach(k => s += isLocked(KO_KICKOFFS[k]) ? '1' : '0');
+  return s;
+}
+let lastLockSig = '';
+function lockTick() {
+  const sig = lockSignature();
+  if (sig === lastLockSig) return;        // rien n'a changé → ne pas perturber la saisie
+  lastLockSig = sig;
+  renderGroups();
+  seedBracket(); propagateBracket(); renderBracket();
+}
+setInterval(lockTick, 30000);
+
+// ============================================================
 // INIT
 // ============================================================
 loadState();
@@ -1301,6 +1468,7 @@ renderGroups();
 seedBracket();
 propagateBracket();
 initPlayer();
+lastLockSig = lockSignature();
 </script>
 </body>
 </html>
