@@ -1383,16 +1383,26 @@ async function renderLeaderboard() {
       return;
     }
 
+    const ko = official && official.officialKO;
+    const koHasData = ko && ((ko.reachedQF && ko.reachedQF.length) || (ko.reachedSF && ko.reachedSF.length) || (ko.reachedFinal && ko.reachedFinal.length) || ko.champion);
     const hasResults = official && (
       Object.values(official.groups || {}).some(g => (g.matches || []).some(m => m && m.result)) ||
-      Object.values(official.bracket || {}).some(arr => (arr || []).some(m => m && m.winner))
+      Object.values(official.bracket || {}).some(arr => (arr || []).some(m => m && m.winner)) ||
+      koHasData
     );
 
     // On va manipuler le state pour reconstruire les brackets : on sauvegarde l'état actif
     const snapshot = buildPronosPayload();
     let rows;
     try {
-      const officialSets = hasResults ? loadIntoStateAndGetSets(official) : { qf: [], sf: [], fin: [], champ: null };
+      // Résultats officiels de phase finale : priorité au robot (officialKO en "sets"),
+      // sinon reconstruction depuis le bracket saisi manuellement par l'admin.
+      let officialSets;
+      if (koHasData) {
+        officialSets = { qf: ko.reachedQF || [], sf: ko.reachedSF || [], fin: ko.reachedFinal || [], champ: ko.champion || null };
+      } else {
+        officialSets = hasResults ? loadIntoStateAndGetSets(official) : { qf: [], sf: [], fin: [], champ: null };
+      }
       rows = players.map(p => {
         // Un prono mal formé ne doit jamais casser tout le classement
         try {
